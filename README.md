@@ -111,7 +111,7 @@ swag init -g cmd/server/main.go
 
 ## Migration
 
-Migrations are managed using Flyway. The migration files are located in the `migrations/` directory.
+Migrations are managed using Flyway. The migration files are located in the `migrations/` directory. The migration scripts should be run before order-service.
 
 ### Migration Files
 
@@ -272,10 +272,12 @@ More unittests are needed. For proper unittests mocking is needed (like OrderRep
 
 Some validation/protection against SQL injection is still missing.
 
-The oder worker can be extended to:
+The order worker can be extended to:
 - Send notifications
 - Update inventory
 - Trigger downstream services
+
+The service supports only plain http. Proper Webserver with reverse proxy configuration is missing (maybe proper certificate, proper certificate sign and prolongation, like letsencrypt)
 
 
 
