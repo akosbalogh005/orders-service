@@ -23,6 +23,6 @@ type CreateOrderRequest struct {
 	ProductID      string    `json:"product_id" binding:"required"`
 	Quantity       int       `json:"quantity" binding:"required,min=1"`
 	TotalPrice     float64   `json:"total_price" binding:"required,min=0"`
-	OrderTime      time.Time `json:"order_time,omitempty" binding:"required`
+	OrderTime      time.Time `json:"order_time,omitempty" binding:"required"`
 	IdempotencyKey string    `json:"idempotency_key" binding:"required"`
 }

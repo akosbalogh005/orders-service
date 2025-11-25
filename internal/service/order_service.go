@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"casebrief/internal/events"
@@ -28,15 +29,30 @@ func NewOrderService(repo *repository.OrderRepository, eventChan chan *events.Or
 }
 
 // CreateOrder creates a new order and emits an event
-func (s *OrderService) CreateOrder(ctx context.Context, req *models.CreateOrderRequest) (*models.Order, error) {
-	// Check idempotency
-	existingOrder, err := s.repo.GetOrderByIdempotencyKey(ctx, req.IdempotencyKey)
-	if err == nil && existingOrder != nil {
-		s.logger.Info("Order already exists for idempotency key",
+func (s *OrderService) CreateOrder(ctx context.Context, endpointName, endpointScheme string, req *models.CreateOrderRequest) (*models.Order, error) {
+	// Check idempotency - if valid record exists, return saved response
+	savedResponse, err := s.repo.GetIdempotencyResponse(ctx, endpointName, endpointScheme, req.IdempotencyKey)
+	if err == nil && savedResponse != nil {
+		s.logger.Info("Idempotent request detected, returning saved response",
+			zap.String("endpoint_name", endpointName),
+			zap.String("endpoint_scheme", endpointScheme),
 			zap.String("idempotency_key", req.IdempotencyKey),
-			zap.String("order_id", existingOrder.ID),
 		)
-		return existingOrder, nil
+
+		var order models.Order
+		if err := json.Unmarshal(savedResponse, &order); err != nil {
+			s.logger.Warn("Failed to unmarshal saved idempotency response, proceeding with new request",
+				zap.Error(err),
+			)
+			// Continue with normal flow if unmarshaling fails
+		} else {
+			return &order, nil
+		}
+	} else if err != nil && err != repository.ErrIdempotencyNotFound {
+		s.logger.Warn("Error checking idempotency, proceeding with new request",
+			zap.Error(err),
+		)
+		// Continue with normal flow if there's an error (but not "not found")
 	}
 
 	// Create order
@@ -52,13 +68,16 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *models.CreateOrderR
 		return nil, err
 	}
 
-	// Store idempotency key
-	if err := s.repo.StoreIdempotencyKey(ctx, req.IdempotencyKey, order.ID); err != nil {
-		s.logger.Warn("Failed to store idempotency key",
+	// Store idempotency response (default validity: 10 minutes)
+	validityDuration := 10 * time.Minute
+	if err := s.repo.StoreIdempotencyResponse(ctx, endpointName, endpointScheme, req.IdempotencyKey, order, validityDuration); err != nil {
+		s.logger.Warn("Failed to store idempotency response",
 			zap.Error(err),
+			zap.String("endpoint_name", endpointName),
+			zap.String("endpoint_scheme", endpointScheme),
 			zap.String("idempotency_key", req.IdempotencyKey),
 		)
-		// Don't fail the request if idempotency key storage fails
+		// Don't fail the request if idempotency storage fails
 	}
 
 	// Emit event

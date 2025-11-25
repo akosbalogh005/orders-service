@@ -51,7 +51,11 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	order, err := h.service.CreateOrder(ctx, &req)
+	// Extract endpoint name and scheme for idempotency
+	endpointName := c.Request.URL.Path // e.g., "/orders"
+	endpointScheme := c.Request.Method // e.g., "POST"
+
+	order, err := h.service.CreateOrder(ctx, endpointName, endpointScheme, &req)
 	if err != nil {
 		h.logger.Error("Failed to create order",
 			zap.Error(err),

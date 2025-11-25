@@ -20,14 +20,16 @@ CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 -- Create index on order_time for time-based queries
 CREATE INDEX IF NOT EXISTS idx_orders_order_time ON orders(order_time);
 
--- Create idempotency_keys table for idempotent requests
-CREATE TABLE IF NOT EXISTS idempotency_keys (
-    key VARCHAR(255) PRIMARY KEY,
-    order_id VARCHAR(36) NOT NULL,
+-- Create new idempotency_keys table with endpoint name, scheme, response, and validity
+CREATE TABLE idempotency_keys (
+    endpoint_name VARCHAR(255) NOT NULL,
+    endpoint_scheme VARCHAR(10) NOT NULL,
+    key VARCHAR(255) NOT NULL,
+    response JSONB NOT NULL,
+    valid_to TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+    PRIMARY KEY (endpoint_name, endpoint_scheme, key)
 );
 
--- Create index on order_id for faster lookups
-CREATE INDEX IF NOT EXISTS idx_idempotency_keys_order_id ON idempotency_keys(order_id);
-
+-- Create index on valid_to for efficient cleanup queries
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_valid_to ON idempotency_keys(valid_to);

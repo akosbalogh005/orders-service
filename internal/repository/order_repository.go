@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"casebrief/internal/models"
@@ -104,57 +105,59 @@ func (r *OrderRepository) GetOrderByID(ctx context.Context, id string) (*models.
 	return order, nil
 }
 
-// GetOrderByIdempotencyKey retrieves an order by its idempotency key
-func (r *OrderRepository) GetOrderByIdempotencyKey(ctx context.Context, key string) (*models.Order, error) {
+// GetIdempotencyResponse retrieves a saved response by endpoint and idempotency key if still valid
+func (r *OrderRepository) GetIdempotencyResponse(ctx context.Context, endpointName, endpointScheme, key string) ([]byte, error) {
 	query := `
-		SELECT o.id, o.customer_id, o.product_id, o.quantity, o.total_price, o.status, o.order_time, o.created_at, o.updated_at
-		FROM orders o
-		INNER JOIN idempotency_keys ik ON o.id = ik.order_id
-		WHERE ik.key = $1
+		SELECT response
+		FROM idempotency_keys
+		WHERE endpoint_name = $1 AND endpoint_scheme = $2 AND key = $3 AND valid_to > NOW()
 	`
 
-	order := &models.Order{}
-	err := r.db.QueryRowContext(ctx, query, key).Scan(
-		&order.ID,
-		&order.CustomerID,
-		&order.ProductID,
-		&order.Quantity,
-		&order.TotalPrice,
-		&order.Status,
-		&order.OrderTime,
-		&order.CreatedAt,
-		&order.UpdatedAt,
-	)
+	var response []byte
+	err := r.db.QueryRowContext(ctx, query, endpointName, endpointScheme, key).Scan(&response)
 
 	if err == sql.ErrNoRows {
-		return nil, ErrOrderNotFound
+		return nil, ErrIdempotencyNotFound
 	}
 
 	if err != nil {
-		r.logger.Error("Failed to get order by idempotency key",
+		r.logger.Error("Failed to get idempotency response",
 			zap.Error(err),
+			zap.String("endpoint_name", endpointName),
+			zap.String("endpoint_scheme", endpointScheme),
 			zap.String("idempotency_key", key),
 		)
 		return nil, err
 	}
 
-	return order, nil
+	return response, nil
 }
 
-// StoreIdempotencyKey stores an idempotency key mapping
-func (r *OrderRepository) StoreIdempotencyKey(ctx context.Context, key string, orderID string) error {
+// StoreIdempotencyResponse stores an idempotency key with endpoint info and response
+func (r *OrderRepository) StoreIdempotencyResponse(ctx context.Context, endpointName, endpointScheme, key string, response interface{}, validityDuration time.Duration) error {
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		r.logger.Error("Failed to marshal response for idempotency",
+			zap.Error(err),
+		)
+		return err
+	}
+
+	validTo := time.Now().Add(validityDuration)
 	query := `
-		INSERT INTO idempotency_keys (key, order_id, created_at)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (key) DO NOTHING
+		INSERT INTO idempotency_keys (endpoint_name, endpoint_scheme, key, response, valid_to, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (endpoint_name, endpoint_scheme, key) DO UPDATE
+		SET response = EXCLUDED.response, valid_to = EXCLUDED.valid_to
 	`
 
-	_, err := r.db.ExecContext(ctx, query, key, orderID, time.Now())
+	_, err = r.db.ExecContext(ctx, query, endpointName, endpointScheme, key, responseJSON, validTo, time.Now())
 	if err != nil {
-		r.logger.Error("Failed to store idempotency key",
+		r.logger.Error("Failed to store idempotency response",
 			zap.Error(err),
+			zap.String("endpoint_name", endpointName),
+			zap.String("endpoint_scheme", endpointScheme),
 			zap.String("idempotency_key", key),
-			zap.String("order_id", orderID),
 		)
 		return err
 	}
