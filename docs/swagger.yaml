@@ -1,0 +1,129 @@
+definitions:
+  models.CreateOrderRequest:
+    properties:
+      customer_id:
+        type: string
+      idempotency_key:
+        type: string
+      order_time:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        minimum: 1
+        type: integer
+      total_price:
+        minimum: 0
+        type: number
+    required:
+    - customer_id
+    - idempotency_key
+    - product_id
+    - quantity
+    - total_price
+    type: object
+  models.Order:
+    properties:
+      created_at:
+        type: string
+      customer_id:
+        type: string
+      id:
+        type: string
+      order_time:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        type: integer
+      status:
+        type: string
+      total_price:
+        type: number
+      updated_at:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /healthz:
+    get:
+      description: Returns the health status of the service
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - health
+  /orders:
+    post:
+      consumes:
+      - application/json
+      description: Create a new order with idempotency support
+      parameters:
+      - description: Order creation request
+        in: body
+        name: order
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateOrderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Order'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a new order
+      tags:
+      - orders
+  /orders/{id}:
+    get:
+      description: Retrieve an order by its ID
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Order'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get order by ID
+      tags:
+      - orders
+swagger: "2.0"

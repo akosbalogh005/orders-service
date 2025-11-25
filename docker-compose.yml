@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: orders-postgres
+    env_file:
+      - ./env/postgres.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  flyway:
+    image: flyway/flyway:11
+    container_name: orders-flyway
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/flyway/sql
+    env_file:
+      - ./env/flyway.env
+    command:
+      - migrate
+
+  orders-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: orders-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+    env_file:
+      - ./env/orders-service.env
+    ports:
+      - "${HOST_PORT:-8080}:${SERVER_PORT:-8080}"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
